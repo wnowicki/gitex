@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gitex"
+version = "0.1.0"
+description = "Fast-forward Git flow branches and report potential merge conflicts."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.scripts]
+gitex = "gitex:cli"
+
+[tool.setuptools]
+py-modules = ["gitex"]
