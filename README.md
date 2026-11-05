@@ -20,7 +20,10 @@ Run from any directory:
 gitex --help
 gitex --dry-run
 gitex /path/to/repository --dry-run
+gitex --dry-run --plain
 ```
+
+Interactive output uses compact tables with coloured statuses. Use `--plain` for unwrapped, copy-friendly text; output redirected to a file or pipe is automatically plain. Branch names and statuses remain literal text, with no emoji or decorative borders to copy around.
 
 For development, use `uv tool install --editable .` so edits to `gitex.py` apply immediately. To reinstall a regular installation after changing the source, run `uv tool install --reinstall .` from this checkout. If `gitex` is not on your PATH, run `uv tool update-shell` and restart your shell.
 

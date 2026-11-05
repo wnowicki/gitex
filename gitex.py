@@ -6,6 +6,43 @@ import subprocess
 import sys
 from pathlib import Path
 
+from rich import box
+from rich.console import Console
+from rich.table import Table
+from rich.text import Text
+
+
+STATUS_STYLES = {
+    "equal": "dim",
+    "contains base": "green",
+    "fast-forwarded": "green",
+    "would fast-forward": "cyan",
+    "fast-forward possible": "cyan",
+    "CLEAN MERGE required": "yellow",
+    "CONFLICT": "bold red",
+}
+
+
+def report(console, title, rows, plain=False):
+    """Use tables interactively and unwrapped text for copying or piping."""
+    console.print()
+    console.print(Text(title, style="bold cyan"))
+    if plain or not console.is_terminal:
+        for name, status in rows:
+            console.print(Text(f"  {name}: {status}"), soft_wrap=True)
+        if not rows:
+            console.print("  No branches to check.")
+        return
+    table = Table(box=box.SIMPLE, padding=(0, 1), collapse_padding=True)
+    table.add_column("Branch", style="bold", overflow="fold")
+    table.add_column("Status")
+    for name, status in rows:
+        table.add_row(Text(name), Text(status, style=STATUS_STYLES.get(status, "")))
+    if rows:
+        console.print(table)
+    else:
+        console.print("  No branches to check.", style="dim")
+
 
 class GitError(RuntimeError):
     pass
@@ -49,7 +86,9 @@ def main():
         help="branch name or glob to fast-forward toward main; repeatable; default: develop",
     )
     parser.add_argument("--dry-run", action="store_true", help="fetch and report without pushing")
+    parser.add_argument("--plain", action="store_true", help="use plain, unwrapped output for copying")
     args = parser.parse_args()
+    console = Console(highlight=False, color_system=None if args.plain else "auto")
     repo = args.repository.resolve()
     remote = args.remote
     # Keep remote names safe both as command arguments and ref components.
@@ -84,19 +123,20 @@ def main():
         selected.update(matches)
     selected.discard(args.main)
     skipped = False
-    print(f"Fast-forward updates toward {remote}/{args.main}:", flush=True)
+    updates = []
     for name in sorted(selected):
         status = relationship(repo, refs[name], refs[args.main])
         if status == "fast-forward possible":
             if args.dry_run:
-                print(f"  {name}: would fast-forward", flush=True)
+                status = "would fast-forward"
             else:
                 # A normal push enforces fast-forward on the server too.
                 run(repo, "push", remote, f"{refs[args.main]}:refs/heads/{name}")
-                print(f"  {name}: fast-forwarded", flush=True)
+                status = "fast-forwarded"
         else:
-            print(f"  {name}: {status}", flush=True)
-            skipped |= status in ("CONFLICT", "clean merge required")
+            skipped |= status in ("CONFLICT", "CLEAN MERGE required")
+        updates.append((name, status))
+    report(console, f"Fast-forward updates toward {remote}/{args.main}", updates, args.plain)
 
     # Read the actual server state after updates, including concurrent changes.
     if not args.dry_run:
@@ -106,21 +146,24 @@ def main():
         for required in (args.main, args.develop):
             if required not in refs:
                 raise GitError(f"Remote branch disappeared: {remote}/{required}")
-    print(f"\nBranch checks against {remote}/{args.develop}"
-          + (" (current state; dry-run updates not applied):" if args.dry_run else ":"))
     conflicts = False
+    checks = []
     for name in sorted(refs):
         if name in (args.main, args.develop) or name.startswith(("release/", "hotfix/")):
             continue
         status = relationship(repo, refs[name], refs[args.develop])
-        print(f"  {name}: {status}")
+        checks.append((name, status))
         conflicts |= status == "CONFLICT"
-    print(f"\nRelease/hotfix checks against {remote}/{args.main}:")
+    report(console, f"Branch checks against {remote}/{args.develop}"
+           + (" (current state; dry-run updates not applied)" if args.dry_run else ""),
+           checks, args.plain)
+    checks = []
     for name in sorted(refs):
         if name.startswith(("release/", "hotfix/")):
             status = relationship(repo, refs[name], refs[args.main])
-            print(f"  {name}: {status}")
+            checks.append((name, status))
             conflicts |= status == "CONFLICT"
+    report(console, f"Release/hotfix checks against {remote}/{args.main}", checks, args.plain)
     return 1 if skipped or conflicts else 0
 
 
@@ -129,7 +172,7 @@ def cli():
     try:
         return main()
     except (GitError, OSError) as error:
-        print(f"Error: {error}", file=sys.stderr)
+        Console(stderr=True, highlight=False).print(Text(f"Error: {error}", style="bold red"), soft_wrap=True)
         return 2
 
 
