@@ -29,4 +29,6 @@ and divergence does not imply a merge conflict. Remote-tracking information
 may be stale.
 
 ---
+Licensed under the [MIT License](LICENSE).
+
 Copyright (c) 2026 wnowicki.dev
