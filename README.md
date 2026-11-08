@@ -4,7 +4,7 @@ The script supports Git flow maintenance for the current repository or a reposit
 
 It fetches branches from origin and checks whether develop includes the latest main changes. If develop can be fast-forwarded, it updates and pushes it. Otherwise, it reports whether a merge would be clean or cause conflicts.
 
-It then checks other remote branches against develop, skipping main, develop, release/*, and hotfix/* branches. Release/* and hotfix/* branches are checked separately against main.
+It then checks other remote branches against develop, skipping main, develop, release *, and hotfix* branches. Release *and hotfix* branches are checked separately against main.
 
 By default, only develop is updated. Parameters allow selecting other branches, changing branch names or the remote, and running a dry run without pushing. Local branches and working files remain unchanged.
 

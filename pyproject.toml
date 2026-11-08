@@ -13,10 +13,9 @@ dependencies = [
 ]
 
 [project.scripts]
-gitex = "gitex:cli"
 
 [tool.setuptools]
-py-modules = ["gitex"]
+py-modules = []
 
 [project.urls]
 "Homepage" = "https://wnowicki.dev"
