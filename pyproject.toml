@@ -76,4 +76,8 @@ unfixable = ["B"]
 "**/{tests,docs,tools,scripts}/*" = ["E402", "S"]
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.11"]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.11",
+]
