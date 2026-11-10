@@ -25,6 +25,20 @@ where = ["src"]
 "Homepage" = "https://wnowicki.dev"
 "Source" = "https://github.com/wnowicki/gitex"
 
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q --cov=app --cov-report xml:coverage.xml --cov-report term"
+testpaths = [
+    "tests",
+]
+pythonpath = "."
+
+[tool.coverage.run]
+
+omit = [
+    "*/__init__.py",
+]
+
 [tool.ruff]
 
 line-length = 100
