@@ -198,3 +198,15 @@ def commit_date(repo: Path, oid: str) -> str:
     if len(oid) not in (40, 64) or any(c not in "0123456789abcdef" for c in oid):
         raise GitError("Invalid commit OID; inspect the repository again.")
     return _run(repo, "show", "-s", "--format=%cI", oid, "--")
+
+
+def fetch_prune(repo: Path) -> bool:
+    """Run git fetch -p using Git's configured default remote selection.
+
+    No remote is required for local-only repositories. Errors stop reporting
+    rather than presenting cached data as freshly fetched.
+    """
+    if not _run(repo, "remote"):
+        return False
+    _run(repo, "fetch", "-p")
+    return True

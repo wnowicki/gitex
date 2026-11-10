@@ -1,10 +1,18 @@
-"""Read-only branch reporting, separate from terminal presentation."""
+"""Branch reporting with optional remote refresh, separate from presentation."""
 
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
-from gitex.branches import BranchPolicy, branch_policy
-from gitex.git import Relationship, RelationshipAssessment, commit_date, compare_commits, snapshot
+from gitex.branches import BranchPolicy, BranchType, branch_policy
+from gitex.git import (
+    Relationship,
+    RelationshipAssessment,
+    commit_date,
+    compare_commits,
+    fetch_prune,
+    snapshot,
+)
 from gitex.models import RefState, RepoSnapshot
 
 
@@ -22,17 +30,26 @@ class BranchReport:
     last_commit: str
     remote_refs: tuple[str, ...] = ()
     remote_differs: bool = False
+    parent_inferred: bool = False
 
 
 @dataclass(frozen=True)
 class ListReport:
     repository: RepoSnapshot
     branches: tuple[BranchReport, ...]
+    fetched: bool = False
 
 
-def list_branches(repo: Path) -> ListReport:
-    """Report local and cached remote branches; never fetch or probe by merging."""
+def list_branches(repo: Path, *, refresh: bool = True) -> ListReport:
+    """Fetch/prune before reporting; refresh=False is cached read-only inspection."""
     state = snapshot(repo)
+    fetched = fetch_prune(state.root) if refresh else False
+    if fetched:
+        state = snapshot(state.root)
+    return _build_report(state, fetched)
+
+
+def _build_report(state: RepoSnapshot, fetched: bool) -> ListReport:
     refs = {ref.name: ref for ref in state.refs}
     reports = []
     locals_by_name = {
@@ -77,6 +94,9 @@ def list_branches(repo: Path) -> ListReport:
             continue
         policy = branch_policy(name, state.config.branches)
         parent = policy.delivery_target or policy.integration_source
+        parent_inferred = policy.kind == BranchType.UNKNOWN
+        if parent_inferred:
+            parent = state.config.branches.develop
         source_ref = None
         relation = None
         readiness = "—"
@@ -112,6 +132,9 @@ def list_branches(repo: Path) -> ListReport:
                 commit_date(state.root, ref.oid),
                 tuple(r.name for r in remote_groups.get(name, ())) if local else (ref.name,),
                 local and any(r.oid != ref.oid for r in remote_groups.get(name, ())),
+                parent_inferred,
             )
         )
-    return ListReport(state, tuple(reports))
+    reports.sort(key=lambda branch: branch.ref.name)
+    reports.sort(key=lambda branch: datetime.fromisoformat(branch.last_commit), reverse=True)
+    return ListReport(state, tuple(reports), fetched)

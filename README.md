@@ -50,12 +50,17 @@ unequal tips. Combined rows use the local tip for comparisons and dates.
 Remote-only rows include the remote name.
 
 Parent means the delivery target: feature/bugfix → develop, release/hotfix →
-main. Develop compares with main; main and unknown branches have no parent.
+main. Develop compares with main; main has no parent. Unknown branches default to the configured develop branch
+for reporting, shown in magenta; this does not grant a mutation policy.
 Local branches use local parents; remote-only branches use same-remote parents.
 `ready` means fast-forward possible into the parent; `merged` means the branch
 tip is already in the parent. Divergence shows `conflicts possible`, an advisory
 warning rather than a conflict prediction. Missing parents are marked explicitly.
-Inspection never fetches or writes Git state; cached remote data may be stale.
+`list` runs `git fetch -p` before inspection, using Git’s default remote
+selection, and sorts by full committer timestamp, newest first. Fetch failures
+stop the command; repositories without remotes are listed locally. Fetch can
+update/prune remote-tracking refs and write objects/FETCH_HEAD, but does not
+change local branches or working files. Other remotes may remain stale.
 
 ---
 Licensed under the [MIT License](LICENSE).

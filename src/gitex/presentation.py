@@ -14,7 +14,7 @@ def render_list(report: ListReport, console: Console) -> None:
     table = Table(box=box.SIMPLE, padding=(0, 1), expand=False)
     for title in ("Branch", "Where", "Parent", "− | +", "Merge", "Last commit"):
         table.add_column(title, overflow="fold")
-    for branch in sorted(report.branches, key=lambda b: b.name):
+    for branch in report.branches:
         location = (
             "both" if branch.local and branch.remote_refs else "local" if branch.local else "remote"
         )
@@ -41,13 +41,15 @@ def render_list(report: ListReport, console: Console) -> None:
                 location + (" ≠" if branch.remote_differs else ""),
                 style={"both": "cyan", "local": "blue", "remote": "magenta"}[location],
             ),
-            Text(parent),
+            Text(parent, style="magenta" if branch.parent_inferred else ""),
             counts,
             Text(readiness.replace("ready (fast-forward)", "ready"), style=style),
             Text(branch.last_commit[:10], style="dim"),
         )
     console.print(table if report.branches else Text("No branches found."))
     notes = ["* current", "≠ local/remote tips differ", "dates: committer"]
+    if any(branch.parent_inferred for branch in report.branches):
+        notes.append("magenta parent: assumed develop")
     if state.dirty:
         notes.append("dirty worktree")
     if state.head_ref is None:
@@ -59,7 +61,12 @@ def render_list(report: ListReport, console: Console) -> None:
     console.print(Text(" · ".join(notes), style="dim"))
     console.print(
         Text(
-            "Cached refs may be stale; conflicts possible is advisory. Both uses the local tip.",
+            (
+                "Fetched with prune; other remotes may be stale. "
+                if report.fetched
+                else "Cached refs may be stale. "
+            )
+            + "Conflicts possible is advisory. Both uses the local tip.",
             style="dim",
         )
     )
