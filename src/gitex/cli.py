@@ -24,7 +24,7 @@ def list_command(
         Path, typer.Argument(help="Repository path (defaults to current directory).")
     ] = Path("."),
 ) -> None:
-    """Show grouped local and cached remote branch status without fetching."""
+    """Show branches, parent divergence, merge readiness, and last commit date."""
     try:
         report = list_branches(path)
     except (GitError, ConfigError, OSError) as exc:

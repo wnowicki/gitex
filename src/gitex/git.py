@@ -191,3 +191,10 @@ def snapshot(repo: Path) -> RepoSnapshot:
         tuple(_run(root, "remote").splitlines()),
         config,
     )
+
+
+def commit_date(repo: Path, oid: str) -> str:
+    """Return the pinned tip's committer date in ISO 8601 format."""
+    if len(oid) not in (40, 64) or any(c not in "0123456789abcdef" for c in oid):
+        raise GitError("Invalid commit OID; inspect the repository again.")
+    return _run(repo, "show", "-s", "--format=%cI", oid, "--")

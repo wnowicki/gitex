@@ -43,6 +43,20 @@ ongoing Git operations, local/remote refs, upstream divergence, and linked
 worktrees. Remote freshness remains unknown: inspection never fetches.
 Snapshots are observations; later execution must revalidate critical OIDs.
 
+`list` shows one coloured table: branch, location (`local`, `remote`, `both`),
+parent, behind/ahead (`− | +`), merge readiness, and last commit date (committer).
+Matching local/remote names share a row. `*` marks the current branch; `≠` marks
+unequal tips. Combined rows use the local tip for comparisons and dates.
+Remote-only rows include the remote name.
+
+Parent means the delivery target: feature/bugfix → develop, release/hotfix →
+main. Develop compares with main; main and unknown branches have no parent.
+Local branches use local parents; remote-only branches use same-remote parents.
+`ready` means fast-forward possible into the parent; `merged` means the branch
+tip is already in the parent. Divergence shows `conflicts possible`, an advisory
+warning rather than a conflict prediction. Missing parents are marked explicitly.
+Inspection never fetches or writes Git state; cached remote data may be stale.
+
 ---
 Licensed under the [MIT License](LICENSE).
 

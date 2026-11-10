@@ -35,19 +35,18 @@ def test_list_branches_and_no_mutation(repo: Path, tmp_path: Path) -> None:
     assert topic.relationship.relationship == Relationship.DIVERGED
     assert topic.ref.ahead == 1
     assert topic.ref.behind == 0
-    assert topic.readiness == "rebase needed; conflicts possible"
+    assert topic.readiness == "conflicts possible"
     assert topic.worktrees == (repo,)
-    assert local["bugfix/fix"].readiness == "fast-forward possible"
+    assert local["bugfix/fix"].readiness == "merged"
     assert local["release/v1"].source_ref == "refs/heads/main"
-    remote_topic = next(
-        b for b in report.branches if b.ref.name == "refs/remotes/origin/feature/topic"
-    )
-    assert remote_topic.source_ref == "refs/remotes/origin/develop"
-    assert remote_topic.relationship.relationship == Relationship.IDENTICAL
+    assert topic.remote_refs == ("refs/remotes/origin/feature/topic",)
+    assert topic.remote_differs
+    assert topic.last_commit == git(repo, "show", "-s", "--format=%cI", topic.ref.oid)
+    assert len(report.branches) == len(local)
     assert not any(b.ref.symbolic_target for b in report.branches)
     result = CliRunner().invoke(app, ["list", str(repo)], terminal_width=240)
     assert result.exit_code == 0, result.output
-    assert "cached refs may be stale" in result.output
+    assert "Cached refs may be stale" in result.output
     assert "feature/topic" in result.output
     assert "dirty" in result.output
     assert contents(repo) == before
@@ -62,7 +61,7 @@ def test_missing_source_and_upstream(repo: Path, tmp_path: Path) -> None:
     git(repo, "push", "-u", "origin", "feature/topic")
     git(repo, "update-ref", "-d", "refs/remotes/origin/feature/topic")
     topic = next(b for b in list_branches(repo).branches if b.name == "feature/topic")
-    assert topic.readiness == "source missing"
+    assert topic.readiness == "parent missing"
     assert topic.relationship is None
     assert topic.ref.upstream_oid is None
     output = CliRunner().invoke(app, ["list", str(repo)], terminal_width=240)
@@ -105,3 +104,35 @@ def test_custom_policy_and_remote_only(repo: Path, tmp_path: Path) -> None:
     assert topic.policy.kind == BranchType.FEATURE
     assert topic.source_ref == "refs/remotes/team/remote/dev"
     assert contents(repo) == before
+
+
+def test_release_compares_delivery_target_and_dates(repo: Path) -> None:
+    git(repo, "branch", "develop")
+    git(repo, "checkout", "-b", "release/v1")
+    git(repo, "commit", "--allow-empty", "-m", "release change")
+    before = contents(repo)
+    branch = next(b for b in list_branches(repo).branches if b.name == "release/v1")
+    assert branch.source_ref == "refs/heads/main"
+    assert (branch.relationship.behind, branch.relationship.ahead) == (0, 1)
+    assert branch.readiness == "ready (fast-forward)"
+    assert branch.last_commit == git(repo, "show", "-s", "--format=%cI", "HEAD")
+    assert contents(repo) == before
+
+
+def test_compact_table_colours_and_literal_names(repo: Path) -> None:
+    from io import StringIO
+
+    from rich.console import Console
+
+    from gitex.presentation import render_list
+
+    git(repo, "branch", "feature/red]")
+    report = list_branches(repo)
+    stream = StringIO()
+    render_list(report, Console(file=stream, width=120, force_terminal=True))
+    output = stream.getvalue()
+    assert "\x1b[" in output
+    assert "feature/red]" in output
+    assert "Last commit" in output
+    assert "Worktrees" not in output
+    assert "Upstream / tracking" not in output

@@ -1,71 +1,65 @@
-"""Literal-text Rich rendering of branch inspection reports."""
+"""Compact literal-text branch table."""
 
+from rich import box
 from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
-from gitex.branches import BranchType
-from gitex.commands.list import BranchReport, ListReport
+from gitex.commands.list import ListReport
 
 
 def render_list(report: ListReport, console: Console) -> None:
-    """Render grouped status without interpreting branch names as markup."""
+    """Show one table; local tips take precedence when both copies exist."""
     state = report.repository
-    console.print(Text(f"Repository: {state.root}"))
-    head = state.head_ref or f"detached at {state.head_oid}"
-    if state.head_oid is None:
-        head = f"{state.head_ref} (unborn)"
-    console.print(Text(f"HEAD: {head}; working tree: {'dirty' if state.dirty else 'clean'}"))
+    table = Table(box=box.SIMPLE, padding=(0, 1), expand=False)
+    for title in ("Branch", "Where", "Parent", "− | +", "Merge", "Last commit"):
+        table.add_column(title, overflow="fold")
+    for branch in sorted(report.branches, key=lambda b: b.name):
+        location = (
+            "both" if branch.local and branch.remote_refs else "local" if branch.local else "remote"
+        )
+        parent = branch.source_ref or "—"
+        parent = parent.removeprefix("refs/heads/").removeprefix("refs/remotes/")
+        counts = Text("—", style="dim")
+        if branch.relationship:
+            relation = branch.relationship
+            counts = Text()
+            counts.append(str(relation.behind), style="yellow" if relation.behind else "dim")
+            counts.append(" | ", style="dim")
+            counts.append(str(relation.ahead), style="green" if relation.ahead else "dim")
+        readiness = branch.readiness
+        style = (
+            "yellow" if "possible" in readiness else "red" if "missing" in readiness else "green"
+        )
+        name = branch.name if branch.local else branch.ref.name.removeprefix("refs/remotes/")
+        table.add_row(
+            Text(
+                ("* " if branch.current else "  ") + name,
+                style="bold cyan" if branch.current else "",
+            ),
+            Text(
+                location + (" ≠" if branch.remote_differs else ""),
+                style={"both": "cyan", "local": "blue", "remote": "magenta"}[location],
+            ),
+            Text(parent),
+            counts,
+            Text(readiness.replace("ready (fast-forward)", "ready"), style=style),
+            Text(branch.last_commit[:10], style="dim"),
+        )
+    console.print(table if report.branches else Text("No branches found."))
+    notes = ["* current", "≠ local/remote tips differ", "dates: committer"]
+    if state.dirty:
+        notes.append("dirty worktree")
+    if state.head_ref is None:
+        notes.append("detached HEAD")
+    elif state.head_oid is None:
+        notes.append("unborn HEAD")
     if state.operations:
-        console.print(Text("Operation in progress: " + ", ".join(state.operations), style="yellow"))
-    console.print("Remote freshness unknown; cached refs may be stale. No fetch performed.")
-    console.print("Conflict assessment is advisory; merges/rebases were not attempted.")
-    if not report.branches:
-        console.print("No branches found.")
-    for kind in BranchType:
-        branches = [b for b in report.branches if b.policy.kind == kind]
-        if not branches:
-            continue
-        table = Table(title=kind.value, box=None, expand=False)
-        for title in (
-            "Branch",
-            "Upstream / tracking",
-            "Workflow source / relationship",
-            "Readiness",
-            "Worktrees",
-        ):
-            table.add_column(title, overflow="fold")
-        for branch in sorted(branches, key=lambda b: (not b.local, b.ref.name)):
-            ref = branch.ref
-            tracking = _tracking(branch)
-            source = branch.source_ref or "—"
-            if branch.relationship:
-                relation = branch.relationship
-                source += f": {relation.relationship.value} (+{relation.ahead}/-{relation.behind})"
-            style = (
-                "yellow"
-                if "possible" in branch.readiness or "missing" in branch.readiness
-                else "green"
-                if branch.relationship
-                else ""
-            )
-            table.add_row(
-                Text(("* " if branch.current else "") + ref.name.removeprefix("refs/")),
-                Text(tracking),
-                Text(source),
-                Text(branch.readiness, style=style),
-                Text(", ".join(str(p) for p in branch.worktrees) or "—"),
-            )
-        console.print(table)
-
-
-def _tracking(branch: BranchReport) -> str:
-    ref = branch.ref
-    if not ref.upstream:
-        return "remote-only" if not branch.local else "no upstream"
-    if ref.upstream_oid is None:
-        return f"{ref.upstream}: missing"
-    tracking = f"{ref.upstream}: ahead {ref.ahead}, behind {ref.behind}"
-    if ref.ahead and ref.behind:
-        tracking += " (diverged)"
-    return tracking
+        notes.append("in progress: " + ", ".join(state.operations))
+    console.print(Text(" · ".join(notes), style="dim"))
+    console.print(
+        Text(
+            "Cached refs may be stale; conflicts possible is advisory. Both uses the local tip.",
+            style="dim",
+        )
+    )
