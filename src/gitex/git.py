@@ -34,6 +34,7 @@ def _run(repo: Path, *args: str) -> str:
             shell=False,
             capture_output=True,
             text=True,
+            errors="surrogateescape",
             timeout=30,
         )
     except FileNotFoundError as exc:

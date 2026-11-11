@@ -69,3 +69,20 @@ def test_invalid_or_missing_ref(repo: Path, ref: str) -> None:
 def test_not_a_repository(tmp_path: Path) -> None:
     with pytest.raises(GitError, match="Git inspection failed"):
         repository_root(tmp_path)
+
+
+def test_git_output_preserves_undecodable_bytes(tmp_path: Path, monkeypatch) -> None:
+    import sys
+
+    from gitex.git import _run
+
+    run = subprocess.run
+
+    def emit_raw_output(args, **kwargs):
+        return run(
+            [sys.executable, "-c", "import sys; sys.stdout.buffer.write(b'?? file-\\xff\\x00')"],
+            **kwargs,
+        )
+
+    monkeypatch.setattr(subprocess, "run", emit_raw_output)
+    assert _run(tmp_path, "status").encode("utf-8", errors="surrogateescape") == b"?? file-\xff\x00"

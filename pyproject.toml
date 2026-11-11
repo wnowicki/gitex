@@ -27,7 +27,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 minversion = "6.0"
-addopts = "-ra -q --cov=app --cov-report xml:coverage.xml --cov-report term"
+addopts = "-ra -q --cov=gitex --cov-report xml:coverage.xml --cov-report term"
 testpaths = [
     "tests",
 ]

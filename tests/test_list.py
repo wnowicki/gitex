@@ -250,3 +250,32 @@ def test_list_does_not_prune_tags_from_config(repo: Path, tmp_path: Path) -> Non
     oid = git(repo, "rev-parse", "refs/tags/local-tag")
     assert list_branches(repo).fetched
     assert git(repo, "rev-parse", "refs/tags/local-tag") == oid
+
+
+def test_list_preserves_undecodable_filename(repo: Path) -> None:
+    import errno
+    import os
+
+    import pytest
+
+    from gitex.git import snapshot
+
+    if os.name != "posix":
+        pytest.skip("Raw undecodable filenames require POSIX filesystem semantics")
+    raw_path = os.fsencode(repo) + b"/untracked-\xff.txt"
+    try:
+        descriptor = os.open(raw_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except OSError as exc:
+        if exc.errno == errno.EILSEQ:
+            pytest.skip("Filesystem rejects undecodable filenames")
+        raise
+    with os.fdopen(descriptor, "wb") as stream:
+        stream.write(b"user work")
+    before = contents(repo)
+    state = snapshot(repo)
+    assert any(os.fsencode(file.path) == b"untracked-\xff.txt" for file in state.files)
+    result = CliRunner().invoke(app, ["list", str(repo)])
+    assert result.exit_code == 0, result.output
+    assert "main" in result.output
+    assert "dirty worktree" in result.output
+    assert contents(repo) == before
