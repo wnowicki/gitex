@@ -219,3 +219,34 @@ def test_list_orders_full_commit_dates(repo: Path, monkeypatch) -> None:
     git(repo, "commit", "--allow-empty", "-m", "older")
     names = [b.name for b in list_branches(repo).branches]
     assert names.index("newer") < names.index("older")
+
+
+def test_list_rejects_fetch_into_local_branches_before_mutation(repo: Path, tmp_path: Path) -> None:
+    remote = tmp_path / "bare.git"
+    git(repo, "init", "--bare", str(remote))
+    git(repo, "remote", "add", "origin", str(remote))
+    git(repo, "push", "origin", "main")
+    git(repo, "branch", "mirror/main")
+    git(repo, "branch", "mirror/local-only")
+    git(repo, "config", "remote.origin.fetch", "+refs/heads/*:refs/heads/mirror/*")
+    git(repo, "commit", "--allow-empty", "-m", "remote update")
+    git(repo, "push", "origin", "main")
+    before, remote_before = contents(repo), contents(remote)
+    result = CliRunner().invoke(app, ["list", str(repo)])
+    assert result.exit_code == 1
+    assert "Unsafe fetch refspec" in result.output
+    assert contents(repo) == before
+    assert contents(remote) == remote_before
+
+
+def test_list_does_not_prune_tags_from_config(repo: Path, tmp_path: Path) -> None:
+    remote = tmp_path / "bare.git"
+    git(repo, "init", "--bare", str(remote))
+    git(repo, "remote", "add", "origin", str(remote))
+    git(repo, "push", "origin", "main")
+    git(repo, "tag", "local-tag")
+    git(repo, "config", "fetch.pruneTags", "true")
+    git(repo, "config", "remote.origin.pruneTags", "true")
+    oid = git(repo, "rev-parse", "refs/tags/local-tag")
+    assert list_branches(repo).fetched
+    assert git(repo, "rev-parse", "refs/tags/local-tag") == oid

@@ -208,5 +208,20 @@ def fetch_prune(repo: Path) -> bool:
     """
     if not _run(repo, "remote"):
         return False
-    _run(repo, "fetch", "-p")
+    # Check every configured remote, including those selected by fetch.all or
+    # remote groups. Fail before any network/ref mutation on unsafe mappings.
+    for entry in _run(repo, "config", "--null", "--list").split("\0"):
+        key, _, value = entry.partition("\n")
+        if not (key.startswith("remote.") and key.endswith(".fetch")):
+            continue
+        if value.startswith("^"):
+            continue  # Negative refspecs only exclude sources.
+        _, separator, destination = value.lstrip("+").partition(":")
+        if not separator or (destination and not destination.startswith("refs/remotes/")):
+            raise GitError(
+                "Unsafe fetch refspec: list requires destinations under refs/remotes/. "
+                "Fix remote.*.fetch in Git configuration and retry. No fetch was attempted."
+            )
+    # Tag pruning can add a tag destination independently of remote.*.fetch.
+    _run(repo, "fetch", "-p", "--no-tags", "--no-prune-tags")
     return True

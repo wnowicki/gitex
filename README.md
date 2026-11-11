@@ -60,7 +60,11 @@ warning rather than a conflict prediction. Missing parents are marked explicitly
 selection, and sorts by full committer timestamp, newest first. Fetch failures
 stop the command; repositories without remotes are listed locally. Fetch can
 update/prune remote-tracking refs and write objects/FETCH_HEAD, but does not
-change local branches or working files. Other remotes may remain stale.
+change local branches or working files. Before fetching, all configured
+`remote.*.fetch` mappings must have explicit destinations under `refs/remotes/`
+(or an empty destination). Unsafe mappings, including local mirror branches,
+are rejected before any fetch. Automatic tag fetching and tag pruning are
+disabled for listing. Other remotes may remain stale.
 
 ---
 Licensed under the [MIT License](LICENSE).
