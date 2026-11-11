@@ -1,0 +1,32 @@
+name: Pytest
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - develop
+
+env:
+  RELEASE_VERSION: "1.1.1"
+  SECRET_KEY: "supersecretkey"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version:
+          - "3.13"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv and set the python version
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - name: Test code with pytest
+        run: uv run pytest
