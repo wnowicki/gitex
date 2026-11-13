@@ -140,10 +140,11 @@ def sync_branch(
         fetch_upstream(state.root, ref.remote, ref.remote_ref, ref.upstream)
         state = snapshot(state.root)
         fresh = _target(state, name)
-        if fresh.oid != original_oid or (fresh.upstream, fresh.remote, fresh.remote_ref) != (
-            ref.upstream,
-            ref.remote,
-            ref.remote_ref,
+        if (
+            fresh.name != ref.name
+            or fresh.oid != original_oid
+            or (fresh.upstream, fresh.remote, fresh.remote_ref)
+            != (ref.upstream, ref.remote, ref.remote_ref)
         ):
             raise GitError("Branch or upstream changed during fetch; inspect and retry.")
         plan = _plan(state, fresh, publish)

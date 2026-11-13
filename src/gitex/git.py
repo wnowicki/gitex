@@ -250,7 +250,7 @@ def fetch_upstream(repo: Path, remote: str, source: str, tracking: str) -> None:
 
 def fast_forward(repo: Path, oid: str) -> None:
     """Fast-forward the current checkout without creating a merge commit."""
-    _run(repo, "merge", "--ff-only", "--no-edit", oid)
+    _run(repo, "merge", "--ff-only", "--no-edit", "--no-overwrite-ignore", oid)
 
 
 def publish_upstream(repo: Path, remote: str, oid: str, destination: str) -> None:
