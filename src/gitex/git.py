@@ -226,3 +226,42 @@ def fetch_prune(repo: Path) -> bool:
     # Tag pruning can add a tag destination independently of remote.*.fetch.
     _run(repo, "fetch", "-p", "--no-tags", "--no-prune-tags")
     return True
+
+
+def fetch_upstream(repo: Path, remote: str, source: str, tracking: str) -> None:
+    """Fetch exactly one upstream into its pinned remote-tracking destination."""
+    _run(repo, "check-ref-format", source)
+    _run(repo, "check-ref-format", tracking)
+    if not source.startswith("refs/heads/") or not tracking.startswith("refs/remotes/"):
+        raise GitError("Unsupported upstream mapping; configure a remote-tracking upstream.")
+    _run(
+        repo,
+        "fetch",
+        "--no-tags",
+        "--no-prune",
+        "--no-prune-tags",
+        "--no-recurse-submodules",
+        "--refmap=",
+        "--",
+        remote,
+        f"+{source}:{tracking}",
+    )
+
+
+def fast_forward(repo: Path, oid: str) -> None:
+    """Fast-forward the current checkout without creating a merge commit."""
+    _run(repo, "merge", "--ff-only", "--no-edit", oid)
+
+
+def publish_upstream(repo: Path, remote: str, oid: str, destination: str) -> None:
+    """Publish to the fetch endpoint, bypassing pushurl/mirror/push refspec config."""
+    url = _run(repo, "remote", "get-url", "--", remote)
+    _run(
+        repo,
+        "push",
+        "--no-follow-tags",
+        "--recurse-submodules=no",
+        "--",
+        url,
+        f"{oid}:{destination}",
+    )
