@@ -297,3 +297,33 @@ def publish_upstream(repo: Path, endpoint: str, oid: str, destination: str) -> N
         endpoint,
         f"{oid}:{destination}",
     )
+
+
+def integrate_commit(repo: Path, oid: str, *, rebase: bool) -> None:
+    """Apply a pinned source, preserving Git conflict state on failure."""
+    if rebase:
+        _run(
+            repo,
+            "-c",
+            "rebase.autoStash=false",
+            "-c",
+            "rebase.updateRefs=false",
+            "rebase",
+            "--no-autostash",
+            "--no-update-refs",
+            oid,
+        )
+    else:
+        _run(
+            repo,
+            "-c",
+            "merge.autoStash=false",
+            "merge",
+            "--no-autostash",
+            "--no-squash",
+            "--ff",
+            "--commit",
+            "--no-edit",
+            "--no-overwrite-ignore",
+            oid,
+        )

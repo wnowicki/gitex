@@ -6,6 +6,7 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
+from gitex.commands.integrate import integrate_branch
 from gitex.commands.list import list_branches
 from gitex.commands.sync import sync_branch
 from gitex.errors import ConfigError, GitError
@@ -63,6 +64,34 @@ def sync_command(
     """Fetch tracked upstream, fast-forward or safely publish the current checkout."""
     try:
         result = sync_branch(path, name, push=push, dry_run=dry_run, show_plan=_show_sync_plan)
+    except (ConfigError, OSError) as exc:
+        Console(stderr=True).print(f"Error: {exc}", markup=False)
+        raise typer.Exit(1) from exc
+    Console().print(f"{result.outcome.value}: {result.reason}", markup=False)
+    if result.recovery:
+        Console().print(result.recovery, markup=False)
+    if result.outcome in (Outcome.BLOCKED, Outcome.FAILED):
+        raise typer.Exit(1)
+
+
+@app.command("integrate")
+def integrate_command(
+    name: Annotated[
+        str | None, typer.Argument(help="Local branch (default: current checkout).")
+    ] = None,
+    path: Annotated[Path, typer.Option("--path")] = Path("."),
+    source: Annotated[
+        str | None, typer.Option("--source", help="Override workflow source.")
+    ] = None,
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Read-only cached plan; never fetch.")
+    ] = False,
+) -> None:
+    """Rebase or merge the validated workflow source into the current checkout."""
+    try:
+        result = integrate_branch(
+            path, name, source=source, dry_run=dry_run, show_plan=_show_sync_plan
+        )
     except (ConfigError, OSError) as exc:
         Console(stderr=True).print(f"Error: {exc}", markup=False)
         raise typer.Exit(1) from exc

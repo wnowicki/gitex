@@ -3,8 +3,8 @@
 A compact Python CLI for safe GitFlow maintenance. The first implementation
 steps provide package scaffolding, configuration, branch policies, and read-only
 Git relationship and repository snapshot adapters. `list` reports branch status;
-`sync` safely synchronizes the current checkout with its upstream. Other
-state-changing workflow commands are not available yet.
+`sync` safely synchronizes the current checkout with its upstream. `integrate` incorporates the validated workflow source. Other
+workflow commands are not available yet.
 
 Requires Python 3.12+ and Git. Install from this checkout with
 [uv](https://docs.astral.sh/uv/guides/tools/):
@@ -99,6 +99,31 @@ for local synchronization. A rejected push preserves local commits for retry.
 `--dry-run` uses cached refs only and never fetches or changes local/remote
 state. Its plan may be stale. Fetching in normal mode may update objects,
 FETCH_HEAD and the upstream tracking ref even when later work is blocked.
+
+## Integrate
+
+```sh
+gitex integrate
+gitex integrate --dry-run
+gitex integrate --source develop --path /path/to/repository
+```
+
+Integrate operates on the current clean checkout: feature/bugfix use rebase;
+develop/release/hotfix use merge. Main and unknown branches are blocked.
+A named branch must already be the current checkout. `--source` overrides only
+the integration source, never the delivery target.
+
+The source must be a direct local branch with an existing tracked upstream.
+Execution fetches that upstream only, then requires the local source OID to
+match it exactly; sync/reconcile an outdated or unpublished source first.
+Plans show mutations and pinned OIDs are revalidated before integration.
+Dry-run uses cached knowledge and never fetches or changes state.
+
+Integrate never publishes. Rebasing a published topic can block later normal
+publication; this is reported separately and never triggers a force-push.
+On conflict, Git state remains available: inspect `git status`, resolve and
+run `git rebase --continue` / `git merge --continue`, or explicitly abort the
+operation. A retry validates state again. Already-included sources are a no-op.
 
 ---
 Licensed under the [MIT License](LICENSE).
