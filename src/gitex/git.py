@@ -230,7 +230,20 @@ def fetch_prune(repo: Path) -> bool:
 
 def remote_endpoint(repo: Path, remote: str) -> str:
     """Resolve the fetch endpoint for pinning across a sync operation."""
-    return _run(repo, "remote", "get-url", "--", remote)
+    endpoint = _run(repo, "remote", "get-url", "--", remote)
+    for entry in _run(repo, "config", "--null", "--list").split("\0"):
+        key, separator, prefix = entry.partition("\n")
+        if (
+            separator
+            and key.startswith("url.")
+            and key.endswith(".insteadof")
+            and endpoint.startswith(prefix)
+        ):
+            raise GitError(
+                "Matching url.*.insteadOf rewrite blocks use of the pinned endpoint; "
+                "remove the rewrite and retry."
+            )
+    return endpoint
 
 
 def fetch_upstream(repo: Path, endpoint: str, source: str, tracking: str) -> None:

@@ -24,6 +24,8 @@ def _target(state: RepoSnapshot, name: str | None) -> RefState:
     ref = next((r for r in state.refs if r.name == refname), None)
     if ref is None:
         raise GitError("Local branch missing or HEAD detached/unborn; checkout an existing branch.")
+    if ref.symbolic_target:
+        raise GitError("Symbolic local branches are unsupported; checkout a direct local branch.")
     if ref.name != state.head_ref:
         raise GitError(
             "Only the current checkout is supported; switch to the branch in its owning worktree."
