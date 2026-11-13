@@ -6,7 +6,7 @@ from pathlib import Path
 from gitex.branches import BranchType, branch_policy
 from gitex.config import valid_ref_name
 from gitex.errors import GitError
-from gitex.git import fast_forward, fetch_upstream, publish_upstream, snapshot
+from gitex.git import fast_forward, fetch_upstream, publish_upstream, remote_endpoint, snapshot
 from gitex.models import (
     Action,
     OperationPlan,
@@ -121,6 +121,7 @@ def sync_branch(
             return OperationResult(
                 Outcome.PLANNED, "Cached plan only; execution revalidates after fetch."
             )
+        endpoint = remote_endpoint(state.root, ref.remote)
         show_plan(
             OperationPlan(
                 (
@@ -137,7 +138,9 @@ def sync_branch(
         original_oid = ref.oid
         if _target(snapshot(state.root), name) != ref:
             raise GitError("Branch state changed before fetch; inspect and retry.")
-        fetch_upstream(state.root, ref.remote, ref.remote_ref, ref.upstream)
+        _check_endpoint(state.root, ref.remote, endpoint)
+        fetch_upstream(state.root, endpoint, ref.remote_ref, ref.upstream)
+        _check_endpoint(state.root, ref.remote, endpoint)
         state = snapshot(state.root)
         fresh = _target(state, name)
         if (
@@ -153,11 +156,12 @@ def sync_branch(
             current = _target(snapshot(state.root), name)
             if current != fresh:
                 raise GitError("Branch state changed after planning; inspect and retry.")
+            _check_endpoint(state.root, fresh.remote, endpoint)
             if step.action == Action.FAST_FORWARD:
                 fast_forward(state.root, fresh.upstream_oid)
                 applied = True
             elif step.action == Action.PUSH:
-                publish_upstream(state.root, fresh.remote, fresh.oid, fresh.remote_ref)
+                publish_upstream(state.root, endpoint, fresh.oid, fresh.remote_ref)
                 published = True
         return OperationResult(
             Outcome.UPDATED if applied or published else Outcome.UNCHANGED,
@@ -176,4 +180,11 @@ def sync_branch(
             "Inspect git status and upstream refs, then retry.",
             applied,
             published,
+        )
+
+
+def _check_endpoint(repo: Path, remote: str, expected: str) -> None:
+    if remote_endpoint(repo, remote) != expected:
+        raise GitError(
+            "Remote endpoint changed; inspect remote configuration and retry. Nothing published."
         )

@@ -207,3 +207,78 @@ def test_remote_race_cannot_force_publication(tracked) -> None:
     assert not result.published
     assert git(repo, "rev-parse", "HEAD") == local
     assert git(remote, "rev-parse", "refs/heads/feature/topic") == remote_oid
+
+
+@pytest.mark.parametrize("stage", [Action.FETCH, Action.PUSH])
+def test_remote_endpoint_change_blocks_publication(tracked, stage) -> None:
+    repo, remote, peer = tracked
+    redirected = repo.parent / (repo.name + "-redirected.git")
+    git(repo, "clone", "--bare", str(remote), str(redirected))
+    local_oid = advance(repo, "private local work")
+    original_refs = git(remote, "show-ref")
+    redirected_refs = git(redirected, "show-ref")
+
+    def redirect(plan):
+        if any(step.action == stage for step in plan.steps):
+            git(repo, "remote", "set-url", "origin", str(redirected))
+
+    result = sync_branch(repo, show_plan=redirect)
+    assert result.outcome == Outcome.BLOCKED
+    assert "endpoint changed" in result.reason
+    assert not result.published
+    assert git(repo, "rev-parse", "HEAD") == local_oid
+    assert git(remote, "show-ref") == original_refs
+    assert git(redirected, "show-ref") == redirected_refs
+
+
+@pytest.mark.parametrize("during_plan", [False, True])
+def test_push_instead_of_cannot_redirect_publication(tracked, during_plan: bool) -> None:
+    repo, remote, peer = tracked
+    redirected = repo.parent / (repo.name + "-push-redirect.git")
+    git(repo, "clone", "--bare", str(remote), str(redirected))
+    local_oid = advance(repo, "must stay private")
+    original_refs = git(remote, "show-ref")
+    redirected_before = contents(redirected)
+
+    def configure_rewrite():
+        git(repo, "config", f"url.{redirected}.pushInsteadOf", str(remote))
+
+    if not during_plan:
+        configure_rewrite()
+
+    def redirect(plan):
+        if during_plan and any(step.action == Action.PUSH for step in plan.steps):
+            configure_rewrite()
+
+    result = sync_branch(repo, show_plan=redirect)
+    assert result.outcome == Outcome.BLOCKED
+    assert "pushInsteadOf" in result.reason
+    assert not result.published
+    assert git(repo, "rev-parse", "HEAD") == local_oid
+    assert git(remote, "show-ref") == original_refs
+    assert contents(redirected) == redirected_before
+
+
+def test_unrelated_push_rewrite_does_not_block_sync(tracked) -> None:
+    repo, remote, peer = tracked
+    git(repo, "config", "url./unrelated-destination.pushInsteadOf", "unrelated-prefix:")
+    oid = advance(repo)
+    assert sync_branch(repo).published
+    assert git(remote, "rev-parse", "refs/heads/feature/topic") == oid
+
+
+def test_fast_forward_overrides_configured_squash(tracked) -> None:
+    repo, remote, peer = tracked
+    git(repo, "config", "branch.feature/topic.mergeOptions", "--squash")
+    oid = advance(peer, "incoming fast-forward")
+    git(peer, "push")
+    result = sync_branch(repo)
+    assert result.outcome == Outcome.UPDATED
+    assert result.local_applied
+    assert not result.published
+    assert git(repo, "rev-parse", "HEAD") == oid
+    assert git(repo, "rev-parse", "refs/heads/feature/topic") == oid
+    assert git(remote, "rev-parse", "refs/heads/feature/topic") == oid
+    assert (repo / "file").read_text() == "incoming fast-forward"
+    assert git(repo, "status", "--porcelain") == ""
+    assert not (repo / ".git" / "SQUASH_MSG").exists()

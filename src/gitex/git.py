@@ -228,7 +228,12 @@ def fetch_prune(repo: Path) -> bool:
     return True
 
 
-def fetch_upstream(repo: Path, remote: str, source: str, tracking: str) -> None:
+def remote_endpoint(repo: Path, remote: str) -> str:
+    """Resolve the fetch endpoint for pinning across a sync operation."""
+    return _run(repo, "remote", "get-url", "--", remote)
+
+
+def fetch_upstream(repo: Path, endpoint: str, source: str, tracking: str) -> None:
     """Fetch exactly one upstream into its pinned remote-tracking destination."""
     _run(repo, "check-ref-format", source)
     _run(repo, "check-ref-format", tracking)
@@ -243,25 +248,39 @@ def fetch_upstream(repo: Path, remote: str, source: str, tracking: str) -> None:
         "--no-recurse-submodules",
         "--refmap=",
         "--",
-        remote,
+        endpoint,
         f"+{source}:{tracking}",
     )
 
 
 def fast_forward(repo: Path, oid: str) -> None:
     """Fast-forward the current checkout without creating a merge commit."""
-    _run(repo, "merge", "--ff-only", "--no-edit", "--no-overwrite-ignore", oid)
+    _run(repo, "merge", "--ff-only", "--no-squash", "--no-edit", "--no-overwrite-ignore", oid)
 
 
-def publish_upstream(repo: Path, remote: str, oid: str, destination: str) -> None:
-    """Publish to the fetch endpoint, bypassing pushurl/mirror/push refspec config."""
-    url = _run(repo, "remote", "get-url", "--", remote)
+def publish_upstream(repo: Path, endpoint: str, oid: str, destination: str) -> None:
+    """Publish to a pinned fetch endpoint, never resolving a new destination."""
+    # Passing a URL instead of a remote name does not disable pushInsteadOf.
+    # Inspect effective configuration (including includes/environment) at the
+    # publication boundary, so plan callbacks cannot introduce a redirect.
+    for entry in _run(repo, "config", "--null", "--list").split("\0"):
+        key, separator, prefix = entry.partition("\n")
+        if (
+            separator
+            and key.startswith("url.")
+            and key.endswith(".pushinsteadof")
+            and endpoint.startswith(prefix)
+        ):
+            raise GitError(
+                "Matching url.*.pushInsteadOf rewrite blocks publication to the pinned fetch endpoint; "
+                "remove the rewrite and retry. Nothing published."
+            )
     _run(
         repo,
         "push",
         "--no-follow-tags",
         "--recurse-submodules=no",
         "--",
-        url,
+        endpoint,
         f"{oid}:{destination}",
     )

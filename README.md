@@ -83,7 +83,11 @@ then fast-forwards a behind checkout or publishes an ahead checkout. It never
 merges divergent histories or force-pushes. Plans show affected local/remote
 refs before each stage; execution revalidates branch state after fetching and
 before applying changes. Publication uses the tracked remote's fetch endpoint,
-not a separate push URL or configured push refspec.
+not a separate push URL or configured push refspec. The fetch endpoint is
+pinned before fetching, used for both fetch and publication, and rechecked
+before applying the plan. A changed configured endpoint blocks synchronization.
+Matching `url.*.pushInsteadOf` rewrites are rejected immediately before
+publication, including rewrites introduced after planning; remove them and retry.
 
 A clean checkout, supported branch policy and existing upstream are required.
 Dirty/index changes, ongoing operations, divergence, missing upstreams and
