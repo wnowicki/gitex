@@ -226,3 +226,74 @@ def fetch_prune(repo: Path) -> bool:
     # Tag pruning can add a tag destination independently of remote.*.fetch.
     _run(repo, "fetch", "-p", "--no-tags", "--no-prune-tags")
     return True
+
+
+def remote_endpoint(repo: Path, remote: str) -> str:
+    """Resolve the fetch endpoint for pinning across a sync operation."""
+    endpoint = _run(repo, "remote", "get-url", "--", remote)
+    for entry in _run(repo, "config", "--null", "--list").split("\0"):
+        key, separator, prefix = entry.partition("\n")
+        if (
+            separator
+            and key.startswith("url.")
+            and key.endswith(".insteadof")
+            and endpoint.startswith(prefix)
+        ):
+            raise GitError(
+                "Matching url.*.insteadOf rewrite blocks use of the pinned endpoint; "
+                "remove the rewrite and retry."
+            )
+    return endpoint
+
+
+def fetch_upstream(repo: Path, endpoint: str, source: str, tracking: str) -> None:
+    """Fetch exactly one upstream into its pinned remote-tracking destination."""
+    _run(repo, "check-ref-format", source)
+    _run(repo, "check-ref-format", tracking)
+    if not source.startswith("refs/heads/") or not tracking.startswith("refs/remotes/"):
+        raise GitError("Unsupported upstream mapping; configure a remote-tracking upstream.")
+    _run(
+        repo,
+        "fetch",
+        "--no-tags",
+        "--no-prune",
+        "--no-prune-tags",
+        "--no-recurse-submodules",
+        "--refmap=",
+        "--",
+        endpoint,
+        f"+{source}:{tracking}",
+    )
+
+
+def fast_forward(repo: Path, oid: str) -> None:
+    """Fast-forward the current checkout without creating a merge commit."""
+    _run(repo, "merge", "--ff-only", "--no-squash", "--no-edit", "--no-overwrite-ignore", oid)
+
+
+def publish_upstream(repo: Path, endpoint: str, oid: str, destination: str) -> None:
+    """Publish to a pinned fetch endpoint, never resolving a new destination."""
+    # Passing a URL instead of a remote name does not disable pushInsteadOf.
+    # Inspect effective configuration (including includes/environment) at the
+    # publication boundary, so plan callbacks cannot introduce a redirect.
+    for entry in _run(repo, "config", "--null", "--list").split("\0"):
+        key, separator, prefix = entry.partition("\n")
+        if (
+            separator
+            and key.startswith("url.")
+            and key.endswith(".pushinsteadof")
+            and endpoint.startswith(prefix)
+        ):
+            raise GitError(
+                "Matching url.*.pushInsteadOf rewrite blocks publication to the pinned fetch endpoint; "
+                "remove the rewrite and retry. Nothing published."
+            )
+    _run(
+        repo,
+        "push",
+        "--no-follow-tags",
+        "--recurse-submodules=no",
+        "--",
+        endpoint,
+        f"{oid}:{destination}",
+    )

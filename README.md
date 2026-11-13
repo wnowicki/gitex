@@ -3,6 +3,7 @@
 A compact Python CLI for safe GitFlow maintenance. The first implementation
 steps provide package scaffolding, configuration, branch policies, and read-only
 Git relationship and repository snapshot adapters. `list` reports branch status;
+`sync` safely synchronizes the current checkout with its upstream. Other
 state-changing workflow commands are not available yet.
 
 Requires Python 3.12+ and Git. Install from this checkout with
@@ -65,6 +66,39 @@ change local branches or working files. Before fetching, all configured
 (or an empty destination). Unsafe mappings, including local mirror branches,
 are rejected before any fetch. Automatic tag fetching and tag pruning are
 disabled for listing. Other remotes may remain stale.
+
+## Sync
+
+```sh
+gitex sync
+gitex sync --dry-run
+gitex sync --no-push
+gitex sync feature/topic --path /path/to/repository
+```
+
+Sync defaults to the current branch and publishes safely ahead commits unless
+`--no-push` or `workflow.push_on_sync=false` is set. Explicit CLI flags win.
+It fetches only the configured upstream branch into its remote-tracking ref,
+then fast-forwards a behind checkout or publishes an ahead checkout. It never
+merges divergent histories or force-pushes. Plans show affected local/remote
+refs before each stage; execution revalidates branch state after fetching and
+before applying changes. Publication uses the tracked remote's fetch endpoint,
+not a separate push URL or configured push refspec. The fetch endpoint is
+pinned before fetching, used for both fetch and publication, and rechecked
+before applying the plan. A changed configured endpoint blocks synchronization.
+Matching `url.*.pushInsteadOf` rewrites are rejected immediately before
+publication, including rewrites introduced after planning; remove them and retry.
+
+A clean checkout, supported branch policy and existing upstream are required.
+Dirty/index changes, ongoing operations, divergence, missing upstreams and
+branches checked out elsewhere block execution. This first implementation
+supports the current checkout only; switch to a named branch before syncing it.
+Publication from or to main/develop is blocked: use PR/MR review, or `--no-push`
+for local synchronization. A rejected push preserves local commits for retry.
+
+`--dry-run` uses cached refs only and never fetches or changes local/remote
+state. Its plan may be stale. Fetching in normal mode may update objects,
+FETCH_HEAD and the upstream tracking ref even when later work is blocked.
 
 ---
 Licensed under the [MIT License](LICENSE).
