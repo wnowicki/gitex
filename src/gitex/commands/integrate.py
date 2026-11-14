@@ -105,7 +105,15 @@ def integrate_branch(
             fetch_upstream(state.root, endpoint, parent.remote_ref, parent.upstream)
             new_state, new_target, new_parent, new_policy = _inspect(state.root, name, source)
             if (
-                new_target != target
+                new_target.name != target.name
+                or new_target.oid != target.oid
+                or new_target.upstream != target.upstream
+                or new_target.remote != target.remote
+                or new_target.remote_ref != target.remote_ref
+                or (
+                    target.upstream != parent.upstream
+                    and new_target.upstream_oid != target.upstream_oid
+                )
                 or new_parent.oid != parent.oid
                 or (new_parent.name, new_parent.upstream, new_parent.remote, new_parent.remote_ref)
                 != (parent.name, parent.upstream, parent.remote, parent.remote_ref)
