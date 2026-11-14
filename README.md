@@ -119,6 +119,16 @@ match it exactly; sync/reconcile an outdated or unpublished source first.
 Plans show mutations and pinned OIDs are revalidated before integration.
 Dry-run uses cached knowledge and never fetches or changes state.
 
+Before rebasing, integrate blocks source paths that overlap ignored local
+files or directories, including file/directory replacements. Move colliding
+local data outside the worktree before retrying. Dry-run performs the same
+read-only check; execution checks again immediately before starting rebase.
+
+If integration succeeds but subsequent Git/configuration/file inspection fails,
+the command reports failure with local application explicitly recorded; it does
+not suggest aborting an already completed operation. Inspect HEAD, status and
+configuration before retrying.
+
 Integrate never publishes. Rebasing a published topic can block later normal
 publication; this is reported separately and never triggers a force-push.
 On conflict, Git state remains available: inspect `git status`, resolve and

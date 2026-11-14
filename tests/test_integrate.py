@@ -151,3 +151,116 @@ def test_override_and_changed_plan(workflow) -> None:
             git(repo, "commit", "--allow-empty", "-m", "concurrent")
 
     assert integrate_branch(repo, source="main", show_plan=change).outcome == Outcome.BLOCKED
+
+
+@pytest.mark.parametrize("collision", ["file", "directory", "ancestor-file", "empty-directory"])
+def test_rebase_preserves_ignored_collisions(workflow, collision: str) -> None:
+    repo, remote = workflow
+    # Excludes apply to both branches; force-add the incoming tracked path.
+    (repo / ".git" / "info" / "exclude").write_text("private\n")
+    git(repo, "checkout", "develop")
+    if collision == "ancestor-file":
+        (repo / "private").mkdir()
+        (repo / "private" / "incoming").write_text("upstream file")
+    else:
+        (repo / "private").write_text("upstream file")
+    git(repo, "add", "-f", "private")
+    git(repo, "commit", "-m", "track incoming path")
+    git(repo, "push")
+    git(repo, "checkout", "feature/topic")
+    if collision in ("directory", "empty-directory"):
+        (repo / "private").mkdir()
+        if collision == "directory":
+            (repo / "private" / "local secret").write_bytes(b"must survive\x00\xff")
+    else:
+        (repo / "private").write_bytes(b"must survive\x00\xff")
+    head = git(repo, "rev-parse", "HEAD")
+    index = (repo / ".git" / "index").read_bytes()
+    before = {p: data for p, data in contents(repo).items() if not p.startswith(".git/")}
+    server = contents(remote)
+    for dry_run in (True, False):
+        result = integrate_branch(repo, dry_run=dry_run)
+        assert result.outcome == Outcome.BLOCKED
+        assert "Ignored local path collides" in result.reason
+        assert git(repo, "rev-parse", "HEAD") == head
+        assert (repo / ".git" / "index").read_bytes() == index
+        assert {
+            p: data for p, data in contents(repo).items() if not p.startswith(".git/")
+        } == before
+        assert (repo / "private").exists()
+        assert not (repo / ".git" / "rebase-merge").exists()
+        assert not (repo / ".git" / "rebase-apply").exists()
+        assert contents(remote) == server
+
+
+def test_rebase_allows_unrelated_ignored_file(workflow) -> None:
+    repo, remote = workflow
+    (repo / ".git" / "info" / "exclude").write_text("private\n")
+    advance_source(repo)
+    (repo / "private").write_text("keep this")
+    assert integrate_branch(repo).outcome == Outcome.UPDATED
+    assert (repo / "private").read_text() == "keep this"
+
+
+@pytest.mark.parametrize("failure", ["git", "config", "file-read"])
+def test_post_integration_failure_preserves_applied_result(
+    workflow, monkeypatch, failure: str
+) -> None:
+    import importlib
+
+    from gitex.errors import ConfigError, GitError
+
+    module = importlib.import_module("gitex.commands.integrate")
+    repo, remote = workflow
+    source_oid = advance_source(repo)
+    original_integrate = module.integrate_commit
+    original_snapshot = module.snapshot
+    applied = False
+
+    def apply(*args, **kwargs):
+        nonlocal applied
+        original_integrate(*args, **kwargs)
+        applied = True
+
+    def inspect(*args, **kwargs):
+        if applied:
+            error = {"git": GitError, "config": ConfigError, "file-read": OSError}[failure]
+            raise error("post-operation inspection unavailable")
+        return original_snapshot(*args, **kwargs)
+
+    monkeypatch.setattr(module, "integrate_commit", apply)
+    monkeypatch.setattr(module, "snapshot", inspect)
+    server = contents(remote)
+    result = module.integrate_branch(repo)
+    assert result.outcome == Outcome.FAILED
+    assert result.local_applied and not result.published
+    assert "Locally integrated" in result.reason
+    assert "post-operation inspection unavailable" in result.reason
+    assert "--abort" not in result.recovery
+    assert git(repo, "rev-parse", "HEAD") == source_oid
+    assert git(repo, "status", "--porcelain") == ""
+    assert contents(remote) == server
+
+
+@pytest.mark.parametrize("via_cli", [False, True])
+def test_incoming_invalid_config_reports_applied_integration(workflow, via_cli: bool) -> None:
+    repo, remote = workflow
+    git(repo, "checkout", "develop")
+    source_oid = commit_file(repo, ".gitex.toml", "[workflow]\npush_on_sync = 'invalid'\n")
+    git(repo, "push")
+    git(repo, "checkout", "feature/topic")
+    server = contents(remote)
+    if via_cli:
+        result = CliRunner().invoke(app, ["integrate", "--path", str(repo)])
+        assert result.exit_code == 1
+        assert "Locally integrated" in result.output
+        assert "post-integration verification failed" in result.output
+    else:
+        result = integrate_branch(repo)
+        assert result.outcome == Outcome.FAILED
+        assert result.local_applied and not result.published
+        assert "Invalid type" in result.reason
+    assert git(repo, "rev-parse", "HEAD") == source_oid
+    assert (repo / ".gitex.toml").read_text() == "[workflow]\npush_on_sync = 'invalid'\n"
+    assert git(repo, "status", "--porcelain") == ""
+    assert contents(remote) == server

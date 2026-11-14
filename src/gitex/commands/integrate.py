@@ -5,9 +5,10 @@ from pathlib import Path
 
 from gitex.branches import BranchPolicy, Strategy, branch_policy
 from gitex.config import valid_ref_name
-from gitex.errors import GitError
+from gitex.errors import ConfigError, GitError
 from gitex.git import (
     Relationship,
+    check_ignored_collisions,
     compare_commits,
     fetch_upstream,
     integrate_commit,
@@ -80,6 +81,7 @@ def integrate_branch(
 ) -> OperationResult:
     """Fetch source knowledge, require exact source/upstream equality, then integrate."""
     strategy = None
+    local_applied = False
     try:
         state, target, parent, policy = _inspect(repo, name, source)
         strategy = policy.strategy
@@ -133,6 +135,8 @@ def integrate_branch(
             return OperationResult(
                 Outcome.PLANNED if dry_run else Outcome.UNCHANGED, "Source already included."
             )
+        if strategy == Strategy.REBASE:
+            check_ignored_collisions(state.root, parent.oid)
         warnings = (
             ("Cached remote knowledge may be stale; no fetch or mutation.",) if dry_run else ()
         )
@@ -159,6 +163,7 @@ def integrate_branch(
             return OperationResult(Outcome.PLANNED, "Integration planned using cached refs only.")
         _revalidate(state.root, name, source, target, parent, endpoint, policy)
         integrate_commit(state.root, parent.oid, rebase=strategy == Strategy.REBASE)
+        local_applied = True
         after = snapshot(state.root)
         updated = next(r for r in after.refs if r.name == target.name)
         rewritten = (
@@ -173,7 +178,15 @@ def integrate_branch(
             else "Locally integrated; nothing published.",
             local_applied=True,
         )
-    except GitError as exc:
+    except (GitError, ConfigError, OSError) as exc:
+        if local_applied:
+            return OperationResult(
+                Outcome.FAILED,
+                f"Locally integrated; post-integration verification failed: {exc}. Nothing published.",
+                "Inspect git status, HEAD and repository configuration before retrying; "
+                "integration has already been applied locally.",
+                local_applied=True,
+            )
         operation = "rebase" if strategy == Strategy.REBASE else "merge"
         return OperationResult(
             Outcome.BLOCKED,
