@@ -297,3 +297,67 @@ def publish_upstream(repo: Path, endpoint: str, oid: str, destination: str) -> N
         endpoint,
         f"{oid}:{destination}",
     )
+
+
+def integrate_commit(repo: Path, oid: str, *, rebase: bool) -> None:
+    """Apply a pinned source, preserving Git conflict state on failure."""
+    if rebase:
+        check_ignored_collisions(repo, oid)
+        _run(
+            repo,
+            "-c",
+            "rebase.autoStash=false",
+            "-c",
+            "rebase.updateRefs=false",
+            "rebase",
+            "--no-autostash",
+            "--no-update-refs",
+            oid,
+        )
+    else:
+        _run(
+            repo,
+            "-c",
+            "merge.autoStash=false",
+            "merge",
+            "--no-autostash",
+            "--no-squash",
+            "--ff",
+            "--commit",
+            "--no-edit",
+            "--no-overwrite-ignore",
+            oid,
+        )
+
+
+def check_ignored_collisions(repo: Path, oid: str) -> None:
+    """Block source paths overlapping ignored local files or directories.
+
+    --directory includes ignored directories, including empty ones. Compare
+    path components both ways for file/directory replacements. NUL delimiters
+    preserve whitespace and surrogateescaped filename bytes.
+    """
+    source_paths = _run(repo, "ls-tree", "-r", "--name-only", "-z", oid, "--")
+    ignored_paths = _run(
+        repo,
+        "ls-files",
+        "--others",
+        "--ignored",
+        "--exclude-standard",
+        "--directory",
+        "-z",
+    )
+    paths = {tuple(path.rstrip("/").split("/")) for path in source_paths.split("\0") if path}
+    source_parents = {path[:length] for path in paths for length in range(1, len(path) + 1)}
+    for path in ignored_paths.split("\0"):
+        if not path:
+            continue
+        parts = tuple(path.rstrip("/").split("/"))
+        if parts in source_parents or any(
+            parts[:length] in paths for length in range(1, len(parts) + 1)
+        ):
+            raise GitError(
+                "Ignored local path collides with the rebase source: "
+                + repr(path)
+                + ". Move it to a safe location outside the worktree and retry; no rebase started."
+            )
