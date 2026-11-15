@@ -264,3 +264,38 @@ def test_incoming_invalid_config_reports_applied_integration(workflow, via_cli: 
     assert (repo / ".gitex.toml").read_text() == "[workflow]\npush_on_sync = 'invalid'\n"
     assert git(repo, "status", "--porcelain") == ""
     assert contents(remote) == server
+
+
+@pytest.mark.parametrize("temporary_path", ["private", "private/nested"])
+def test_rebase_preserves_ignored_path_from_add_delete_history(
+    workflow, temporary_path: str
+) -> None:
+    repo, remote = workflow
+    tracked = repo / temporary_path
+    tracked.parent.mkdir(parents=True, exist_ok=True)
+    tracked.write_text("temporarily tracked")
+    git(repo, "add", temporary_path)
+    git(repo, "commit", "-m", "add temporary private path")
+    git(repo, "rm", temporary_path)
+    git(repo, "commit", "-m", "delete temporary private path")
+    # A remaining topic change ensures there is work to replay after deletion.
+    commit_file(repo, "topic", "topic work")
+    advance_source(repo)
+    (repo / ".git" / "info" / "exclude").write_text("private\n")
+    (repo / "private").write_bytes(b"local private data\x00\xff")
+    head = git(repo, "rev-parse", "HEAD")
+    index = (repo / ".git" / "index").read_bytes()
+    server = contents(remote)
+    assert "private" not in git(repo, "ls-tree", "-r", "--name-only", "HEAD")
+    assert "private" not in git(repo, "ls-tree", "-r", "--name-only", "develop")
+    for dry_run in (True, False):
+        result = integrate_branch(repo, dry_run=dry_run)
+        assert result.outcome == Outcome.BLOCKED
+        assert "replay history" in result.reason
+        assert not result.local_applied
+        assert (repo / "private").read_bytes() == b"local private data\x00\xff"
+        assert git(repo, "rev-parse", "HEAD") == head
+        assert (repo / ".git" / "index").read_bytes() == index
+        assert not (repo / ".git" / "rebase-merge").exists()
+        assert not (repo / ".git" / "rebase-apply").exists()
+        assert contents(remote) == server

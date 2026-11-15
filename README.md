@@ -119,7 +119,8 @@ match it exactly; sync/reconcile an outdated or unpublished source first.
 Plans show mutations and pinned OIDs are revalidated before integration.
 Dry-run uses cached knowledge and never fetches or changes state.
 
-Before rebasing, integrate blocks source paths that overlap ignored local
+Before rebasing, integrate checks the source and every candidate replay commit
+tree, including paths added and later deleted. It blocks paths that overlap ignored local
 files or directories, including file/directory replacements. Move colliding
 local data outside the worktree before retrying. Dry-run performs the same
 read-only check; execution checks again immediately before starting rebase.

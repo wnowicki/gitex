@@ -331,13 +331,20 @@ def integrate_commit(repo: Path, oid: str, *, rebase: bool) -> None:
 
 
 def check_ignored_collisions(repo: Path, oid: str) -> None:
-    """Block source paths overlapping ignored local files or directories.
+    """Block source/replay paths overlapping ignored local files or directories.
 
     --directory includes ignored directories, including empty ones. Compare
     path components both ways for file/directory replacements. NUL delimiters
     preserve whitespace and surrogateescaped filename bytes.
     """
-    source_paths = _run(repo, "ls-tree", "-r", "--name-only", "-z", oid, "--")
+    # Inspect every candidate replay tree, not just the two tips: an ignored
+    # path may be tracked temporarily by an add/delete pair in topic history.
+    # Include merge trees conservatively, regardless of rebase-merges settings.
+    commits = (oid, *_run(repo, "rev-list", f"{oid}..HEAD", "--").splitlines())
+    paths: set[tuple[str, ...]] = set()
+    for commit in commits:
+        tree_paths = _run(repo, "ls-tree", "-r", "--name-only", "-z", commit, "--")
+        paths.update(tuple(path.split("/")) for path in tree_paths.split("\0") if path)
     ignored_paths = _run(
         repo,
         "ls-files",
@@ -347,7 +354,6 @@ def check_ignored_collisions(repo: Path, oid: str) -> None:
         "--directory",
         "-z",
     )
-    paths = {tuple(path.rstrip("/").split("/")) for path in source_paths.split("\0") if path}
     source_parents = {path[:length] for path in paths for length in range(1, len(path) + 1)}
     for path in ignored_paths.split("\0"):
         if not path:
@@ -357,7 +363,7 @@ def check_ignored_collisions(repo: Path, oid: str) -> None:
             parts[:length] in paths for length in range(1, len(parts) + 1)
         ):
             raise GitError(
-                "Ignored local path collides with the rebase source: "
+                "Ignored local path collides with the rebase source or replay history: "
                 + repr(path)
                 + ". Move it to a safe location outside the worktree and retry; no rebase started."
             )
