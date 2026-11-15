@@ -66,6 +66,8 @@ class Action(StrEnum):
     REBASE = "rebase"
     MERGE = "merge"
     PUSH = "push"
+    WORKTREE_ADD = "worktree-add"
+    WORKTREE_REMOVE = "worktree-remove"
 
 
 @dataclass(frozen=True)
@@ -107,3 +109,10 @@ class OperationResult:
     recovery: str | None = None
     local_applied: bool = False
     published: bool = False
+
+
+@dataclass(frozen=True)
+class BranchResult:
+    branch: str
+    result: OperationResult
+    worktree: Path | None = None

@@ -367,3 +367,34 @@ def check_ignored_collisions(repo: Path, oid: str) -> None:
                 + repr(path)
                 + ". Move it to a safe location outside the worktree and retry; no rebase started."
             )
+
+
+def create_update_worktree(repo: Path, branch: str, expected_oid: str) -> Path:
+    """Create an isolated checkout without switching the caller's HEAD."""
+    import tempfile
+
+    state = snapshot(repo)
+    refname = f"refs/heads/{branch}"
+    ref = next((r for r in state.refs if r.name == refname), None)
+    if not ref or ref.symbolic_target or ref.oid != expected_oid:
+        raise GitError("Branch changed before worktree creation; inspect and retry.")
+    if any(w.branch == refname for w in state.worktrees):
+        raise GitError("Branch is already checked out; use its existing worktree.")
+    path = Path(tempfile.mkdtemp(prefix="gitex-update-"))
+    try:
+        _run(repo, "-c", "core.hooksPath=", "worktree", "add", "--", str(path), branch)
+    except GitError:
+        if not any(path.iterdir()):
+            path.rmdir()
+        raise
+    return path
+
+
+def remove_update_worktree(repo: Path, path: Path) -> None:
+    """Remove a clean completed checkout without force or discarding user data."""
+    state = snapshot(path)
+    if state.dirty or state.operations:
+        raise GitError(f"Worktree needs recovery; preserved at {path}")
+    if _run(path, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"):
+        raise GitError(f"Worktree contains ignored local data; preserved at {path}")
+    _run(repo, "worktree", "remove", "--", str(path))

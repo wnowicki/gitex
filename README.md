@@ -3,8 +3,8 @@
 A compact Python CLI for safe GitFlow maintenance. The first implementation
 steps provide package scaffolding, configuration, branch policies, and read-only
 Git relationship and repository snapshot adapters. `list` reports branch status;
-`sync` safely synchronizes the current checkout with its upstream. `integrate` incorporates the validated workflow source. Other
-workflow commands are not available yet.
+`sync` safely synchronizes the current checkout with its upstream. `integrate` incorporates the validated workflow source; `update` composes both
+with safe publication. Start, finish and init are not available yet.
 
 Requires Python 3.12+ and Git. Install from this checkout with
 [uv](https://docs.astral.sh/uv/guides/tools/):
@@ -135,6 +135,43 @@ publication; this is reported separately and never triggers a force-push.
 On conflict, Git state remains available: inspect `git status`, resolve and
 run `git rebase --continue` / `git merge --continue`, or explicitly abort the
 operation. A retry validates state again. Already-included sources are a no-op.
+
+## Update
+
+```sh
+gitex update
+gitex update --no-push
+gitex update --dry-run
+gitex update --all
+gitex update --all --dry-run
+```
+
+Update performs upstream sync without intermediate publication, integrates the
+workflow source, then safely publishes. `--no-push` (or configured
+`push_on_sync=false`) finishes after local integration. Single-branch update
+requires the current checkout; use `--path` to select its repository/worktree.
+Each stage revalidates branch/upstream/endpoint/policy; no force-push occurs.
+A published rebase can finish locally but block automatic publication; the
+result preserves local completion separately from remote publication.
+
+`--all` schedules eligible local branches only, sources before dependents.
+Unknown and remote-only branches are excluded. Independent branches continue
+after failure; dependent branches are skipped. Branches checked out in other
+worktrees are blocked. The initial checkout must be clean; it is never switched.
+Non-current branches use isolated temporary worktrees. Worktree creation/removal
+is planned explicitly. Successful clean worktrees are removed without force;
+failed, conflicted or data-containing worktrees are preserved with their paths
+printed. Inspect/recover there with `git -C PATH status` and the relevant
+merge/rebase recovery commands, then run `gitex update --path PATH`. Remove
+completed temporary worktrees explicitly with `git worktree remove PATH`.
+Branch configurations must match the configuration used for dependency planning.
+
+Base publication remains blocked: changes to main/develop require the separate
+review workflow. This may block develop and skip its dependents during `--all`.
+Dry-run produces a conditional plan from cached refs; it never fetches, creates
+worktrees, changes branches or writes Git state. Later stage details depend on
+earlier results and are revalidated during execution. Blocked/failed/skipped
+operations produce a nonzero exit status; partial local changes are reported.
 
 ---
 Licensed under the [MIT License](LICENSE).

@@ -5,7 +5,7 @@ from pathlib import Path
 
 from gitex.branches import BranchType, branch_policy
 from gitex.config import valid_ref_name
-from gitex.errors import GitError
+from gitex.errors import ConfigError, GitError
 from gitex.git import fast_forward, fetch_upstream, publish_upstream, remote_endpoint, snapshot
 from gitex.models import (
     Action,
@@ -175,7 +175,7 @@ def sync_branch(
             local_applied=applied,
             published=published,
         )
-    except GitError as exc:
+    except (GitError, ConfigError, OSError) as exc:
         return OperationResult(
             Outcome.BLOCKED,
             str(exc),
